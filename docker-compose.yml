@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # 注意：现在使用 Supabase 托管的 PostgreSQL，不需要本地数据库
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: meetmoment-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - meetmoment-network
+
+  # Go后端API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meetmoment-backend
+    environment:
+      ENVIRONMENT: production
+      PORT: 8080
+      # 需要替换为你的 Supabase PostgreSQL 连接字符串
+      DATABASE_URL: postgres://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres?sslmode=require
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: your-super-secret-jwt-key-please-change-in-production
+      AI_API_KEY: your-ai-api-key-here
+      FILE_UPLOAD_PATH: /app/uploads
+      MAX_FILE_SIZE: 5242880
+      # Supabase 配置 - 需要替换为你的实际值
+      SUPABASE_URL: https://[YOUR-PROJECT-REF].supabase.co
+      SUPABASE_ANON_KEY: your-supabase-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: your-supabase-service-role-key
+    ports:
+      - "8080:8080"
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      - redis
+    networks:
+      - meetmoment-network
+    restart: unless-stopped
+
+  # Next.js前端
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: meetmoment-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - meetmoment-network
+    restart: unless-stopped
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: meetmoment-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - meetmoment-network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  backend_uploads:
+
+networks:
+  meetmoment-network:
+    driver: bridge 
