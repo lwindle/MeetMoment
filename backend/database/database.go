@@ -12,6 +12,8 @@ import (
 
 // InitPostgreSQL 初始化PostgreSQL数据库连接 (Supabase)
 func InitPostgreSQL(databaseURL string) (*gorm.DB, error) {
+
+
 	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),
 	})

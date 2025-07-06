@@ -37,14 +37,15 @@ func main() {
 	authService := services.NewAuthService(db, rdb, cfg.JWTSecret)
 	userService := services.NewUserService(db, rdb)
 	chatService := services.NewChatService(db, rdb)
-	aiService := services.NewAIService(cfg.AIAPIKey)
+	aiService := services.NewAIService(cfg.DashScopeAPIKey)
 	matchService := services.NewMatchService(db, aiService)
 
 	// 初始化处理器
 	authHandler := handlers.NewAuthHandler(authService)
 	userHandler := handlers.NewUserHandler(userService, supabaseService)
-	chatHandler := handlers.NewChatHandler(chatService, aiService)
+	chatHandler := handlers.NewChatHandler(chatService, aiService, db)
 	matchHandler := handlers.NewMatchHandler(matchService)
+	aliyunHandler := handlers.NewAliyunHandler()
 
 	// 设置Gin模式
 	if cfg.Environment == "production" {
@@ -132,11 +133,23 @@ func main() {
 
 			// AI服务路由
 			ai := api.Group("/ai")
-			ai.Use(middleware.AuthRequired(cfg.JWTSecret))
 			{
+				ai.GET("/users", chatHandler.GetAIUsers) // 获取AI用户列表，无需认证
+				ai.Use(middleware.AuthRequired(cfg.JWTSecret))
 				ai.POST("/generate-tags", chatHandler.GenerateTags)
 				ai.POST("/profile-analysis", userHandler.AnalyzeProfile)
 				ai.POST("/conversation", chatHandler.AIConversation)
+			}
+
+			// 阿里云服务路由
+			if aliyunHandler != nil {
+				aliyun := api.Group("/aliyun")
+				aliyun.Use(middleware.AuthRequired(cfg.JWTSecret))
+				{
+					aliyun.POST("/generate-image", aliyunHandler.GenerateImage)
+					aliyun.POST("/query-task", aliyunHandler.QueryTask)
+					aliyun.POST("/generate-beauty-portrait", aliyunHandler.GenerateBeautyPortrait)
+				}
 			}
 		} else {
 			// 数据库未连接时的提示路由

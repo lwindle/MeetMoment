@@ -6,20 +6,24 @@ import (
 	"strconv"
 	"meetmoment-backend/services"
 	"meetmoment-backend/middleware"
+	"meetmoment-backend/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type ChatHandler struct {
 	chatService *services.ChatService
 	aiService   *services.AIService
+	db          *gorm.DB
 }
 
 // NewChatHandler 创建聊天处理器
-func NewChatHandler(chatService *services.ChatService, aiService *services.AIService) *ChatHandler {
+func NewChatHandler(chatService *services.ChatService, aiService *services.AIService, db *gorm.DB) *ChatHandler {
 	return &ChatHandler{
 		chatService: chatService,
 		aiService:   aiService,
+		db:          db,
 	}
 }
 
@@ -238,5 +242,51 @@ func (h *ChatHandler) AIConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
 		"data":   response,
+	})
+}
+
+// GetAIUsers 获取AI用户列表
+func (h *ChatHandler) GetAIUsers(c *gin.Context) {
+	// 获取高评分的AI用户（女性用户，AI评分>=85）
+	var users []models.User
+	if err := h.db.Where("1=1").
+		Order("ai_score DESC").
+		Limit(20).
+		Find(&users).Error; err != nil {
+		c.JSON(500, gin.H{
+			"status":  "error",
+			"message": "获取AI用户失败",
+		})
+		return
+	}
+
+	// 获取每个用户的兴趣标签
+	var aiUsers []map[string]interface{}
+	for _, user := range users {
+		var interests []models.UserInterest
+		h.db.Where("user_id = ?", user.ID).Find(&interests)
+
+		var interestTags []string
+		for _, interest := range interests {
+			interestTags = append(interestTags, interest.Tag)
+		}
+
+		aiUser := map[string]interface{}{
+			"id":         user.ID,
+			"nickname":   user.Nickname,
+			"age":        user.Age,
+			"city":       user.City,
+			"occupation": user.Occupation,
+			"bio":        user.Bio,
+			"avatar":     user.Avatar,
+			"interests":  interestTags,
+			"ai_score":   user.AIScore,
+		}
+		aiUsers = append(aiUsers, aiUser)
+	}
+
+	c.JSON(200, gin.H{
+		"status": "success",
+		"data":   aiUsers,
 	})
 } 

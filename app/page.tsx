@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Heart, MessageCircle, Users, Sparkles, MapPin } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Heart, MessageCircle, Users, Sparkles, MapPin, Search, Filter, ChevronDown } from "lucide-react"
 import AuthModal from "./components/auth-modal"
 import ChatInterface from "./components/chat-interface"
 import ProfilePage from "./components/profile-page"
@@ -44,26 +45,40 @@ export default function HomePage() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [recommendedUsers, setRecommendedUsers] = useState<User[]>([])
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [currentPageNum, setCurrentPageNum] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [totalUsers, setTotalUsers] = useState(0)
+  const [selectedCity, setSelectedCity] = useState("")
+  const [selectedAge, setSelectedAge] = useState("")
+  
+  const USERS_PER_PAGE = 20
 
   // 获取推荐用户数据
-  const fetchRecommendedUsers = async () => {
+  const fetchRecommendedUsers = async (page = 1, append = false) => {
     setLoading(true)
     try {
       // 暂时直接从Supabase获取用户数据来测试显示
       const SUPABASE_URL = 'https://odnalktszcfoxpcvmshw.supabase.co'
       const SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9kbmFsa3RzemNmb3hwY3Ztc2h3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTE5MDczMSwiZXhwIjoyMDY2NzY2NzMxfQ.sa4_2LydNNhr2QckFKiqHOrXMBkKCaoHL_mYkR76aw8'
       
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/users?gender=eq.2&limit=10&select=id,nickname,age,city,occupation,bio,avatar,verified,is_online,ai_score`, {
+      const offset = (page - 1) * USERS_PER_PAGE
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/users?gender=eq.2&limit=${USERS_PER_PAGE}&offset=${offset}&select=id,nickname,age,city,occupation,bio,avatar,verified,is_online,ai_score&order=created_at.desc`, {
         headers: {
           'apikey': SUPABASE_SERVICE_ROLE_KEY,
           'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Prefer': 'count=exact'
         }
       })
       
       if (response.ok) {
         const users = await response.json()
+        const contentRange = response.headers.get('content-range')
+        const total = contentRange ? parseInt(contentRange.split('/')[1]) : users.length
+        setTotalUsers(total)
         
         // 获取用户兴趣
         const usersWithInterests = await Promise.all(users.map(async (user: any) => {
@@ -113,17 +128,67 @@ export default function HomePage() {
           }
         }))
         
-        setRecommendedUsers(usersWithInterests)
+        if (append) {
+          setRecommendedUsers(prev => [...prev, ...usersWithInterests])
+        } else {
+          setRecommendedUsers(usersWithInterests)
+        }
+        
+        setHasMore(users.length === USERS_PER_PAGE && offset + USERS_PER_PAGE < total)
       } else {
         console.error('Failed to fetch users:', response.status)
-        setRecommendedUsers(getDefaultUsers())
+        if (!append) {
+          setRecommendedUsers(getDefaultUsers())
+        }
       }
     } catch (error) {
       console.error('Error fetching users:', error)
-      setRecommendedUsers(getDefaultUsers())
+      if (!append) {
+        setRecommendedUsers(getDefaultUsers())
+      }
     } finally {
       setLoading(false)
     }
+  }
+
+  // 加载更多用户
+  const loadMoreUsers = () => {
+    if (!loading && hasMore) {
+      const nextPage = currentPageNum + 1
+      setCurrentPageNum(nextPage)
+      fetchRecommendedUsers(nextPage, true)
+    }
+  }
+
+  // 搜索和过滤用户
+  const filterUsers = () => {
+    let filtered = recommendedUsers
+
+    if (searchTerm) {
+      filtered = filtered.filter(user => 
+        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.occupation.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.hobbies.some(hobby => hobby.toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+    }
+
+    if (selectedCity) {
+      filtered = filtered.filter(user => user.city === selectedCity)
+    }
+
+    if (selectedAge) {
+      const [minAge, maxAge] = selectedAge.split('-').map(Number)
+      filtered = filtered.filter(user => user.age >= minAge && user.age <= maxAge)
+    }
+
+    setFilteredUsers(filtered)
+  }
+
+  // 获取所有城市列表
+  const getCities = () => {
+    const cities = [...new Set(recommendedUsers.map(user => user.city))]
+    return cities.sort()
   }
 
   // 默认用户数据（作为fallback）
@@ -183,6 +248,11 @@ export default function HomePage() {
     fetchRecommendedUsers()
   }, [])
 
+  // 搜索和过滤效果
+  useEffect(() => {
+    filterUsers()
+  }, [searchTerm, selectedCity, selectedAge, recommendedUsers])
+
   const handleLogin = (userData: any) => {
     setIsAuthenticated(true)
     setCurrentUser(userData)
@@ -197,6 +267,7 @@ export default function HomePage() {
     setIsAuthenticated(false)
     setCurrentUser(null)
     setRecommendedUsers([])
+    setFilteredUsers([])
     
     // 清除localStorage
     localStorage.removeItem('auth_token')
@@ -324,18 +395,88 @@ export default function HomePage() {
         {/* 推荐用户部分 - 始终显示 */}
         <div>
           <div className="mb-8">
-            <h2 className="text-3xl font-bold mb-2">为你推荐</h2>
-            <p className="text-gray-600">基于你的兴趣和偏好，这些人可能和你很合拍</p>
-            {loading && (
-              <div className="flex items-center space-x-2 mt-4">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-pink-500"></div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-3xl font-bold mb-2">为你推荐</h2>
+                <p className="text-gray-600">
+                  基于你的兴趣和偏好，这些人可能和你很合拍
+                  {totalUsers > 0 && (
+                    <span className="ml-2 text-sm bg-pink-100 text-pink-600 px-2 py-1 rounded-full">
+                      共{totalUsers}人
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* 搜索和过滤栏 */}
+            <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    placeholder="搜索姓名、职业、城市或兴趣..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedCity}
+                    onChange={(e) => setSelectedCity(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  >
+                    <option value="">所有城市</option>
+                    {getCities().map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedAge}
+                    onChange={(e) => setSelectedAge(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  >
+                    <option value="">所有年龄</option>
+                    <option value="18-25">18-25岁</option>
+                    <option value="26-30">26-30岁</option>
+                    <option value="31-35">31-35岁</option>
+                    <option value="36-40">36-40岁</option>
+                    <option value="41-50">41-50岁</option>
+                  </select>
+                </div>
+              </div>
+              
+              {(searchTerm || selectedCity || selectedAge) && (
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-sm text-gray-600">
+                    找到 {filteredUsers.length} 个匹配结果
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSearchTerm("")
+                      setSelectedCity("")
+                      setSelectedAge("")
+                    }}
+                  >
+                    清除筛选
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {loading && currentPageNum === 1 && (
+              <div className="flex items-center justify-center space-x-2 py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-500"></div>
                 <span className="text-gray-500">正在加载推荐用户...</span>
               </div>
             )}
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {recommendedUsers.map((user) => (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {(filteredUsers.length > 0 ? filteredUsers : recommendedUsers).map((user) => (
               <Card key={user.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                 <div className="relative">
                   <img 
@@ -415,11 +556,62 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/* 加载更多按钮 */}
+          {hasMore && !loading && recommendedUsers.length > 0 && (
+            <div className="text-center mt-8">
+              <Button
+                onClick={loadMoreUsers}
+                variant="outline"
+                size="lg"
+                className="px-8"
+              >
+                <ChevronDown className="h-4 w-4 mr-2" />
+                加载更多 ({totalUsers - recommendedUsers.length} 人待加载)
+              </Button>
+            </div>
+          )}
+
+          {/* 加载中状态 */}
+          {loading && currentPageNum > 1 && (
+            <div className="flex items-center justify-center space-x-2 py-8">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-pink-500"></div>
+              <span className="text-gray-500">加载更多用户中...</span>
+            </div>
+          )}
+
+          {/* 空状态 */}
           {recommendedUsers.length === 0 && !loading && (
             <div className="text-center py-12">
               <Heart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-600 mb-2">暂无推荐用户</h3>
               <p className="text-gray-500">请稍后再试，或完善你的个人资料以获得更好的推荐</p>
+            </div>
+          )}
+
+          {/* 搜索无结果 */}
+          {filteredUsers.length === 0 && recommendedUsers.length > 0 && (searchTerm || selectedCity || selectedAge) && (
+            <div className="text-center py-12">
+              <Search className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-600 mb-2">没有找到匹配的用户</h3>
+              <p className="text-gray-500">尝试调整搜索条件或清除筛选</p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={() => {
+                  setSearchTerm("")
+                  setSelectedCity("")
+                  setSelectedAge("")
+                }}
+              >
+                清除所有筛选
+              </Button>
+            </div>
+          )}
+
+          {/* 已加载完所有用户 */}
+          {!hasMore && recommendedUsers.length > 0 && !loading && (
+            <div className="text-center py-8 text-gray-500">
+              <p>已显示所有 {totalUsers} 位用户</p>
             </div>
           )}
         </div>

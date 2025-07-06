@@ -16,6 +16,7 @@ type Config struct {
 	SupabaseURL   string
 	SupabaseKey   string
 	SupabaseSecret string
+	DashScopeAPIKey string
 }
 
 // Load 加载配置
@@ -23,7 +24,7 @@ func Load() *Config {
 	return &Config{
 		Environment:    getEnv("ENVIRONMENT", "development"),
 		Port:          getEnv("PORT", "8080"),
-		DatabaseURL:   getEnv("DATABASE_URL", "postgres://postgres:password@localhost:5432/meetmoment?sslmode=disable"),
+		DatabaseURL:   getEnv("DATABASE_URL", "postgres://postgres:password@localhost:5432/meetmoment?sslmode=disable&statement_cache_mode=describe&&pool_max_conns=1&pool_min_conns=0"),
 		RedisURL:      getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		JWTSecret:     getEnv("JWT_SECRET", "your-super-secret-jwt-key-change-this-in-production"),
 		AIAPIKey:      getEnv("AI_API_KEY", ""),
@@ -32,6 +33,7 @@ func Load() *Config {
 		SupabaseURL:   getEnv("SUPABASE_URL", ""),
 		SupabaseKey:   getEnv("SUPABASE_ANON_KEY", ""),
 		SupabaseSecret: getEnv("SUPABASE_SERVICE_ROLE_KEY", ""),
+		DashScopeAPIKey: getEnv("DASHSCOPE_API_KEY", ""),
 	}
 }
 

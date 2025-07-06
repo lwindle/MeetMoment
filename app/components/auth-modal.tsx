@@ -186,8 +186,8 @@ export default function AuthModal({ onClose, onLogin }: AuthModalProps) {
         
         if (response.ok && data.status === 'success') {
           onLogin({
-            token: data.token,
-            user: data.user,
+            token: data.data.token,
+            user: data.data.user,
           })
         } else {
           throw new Error(data.message || '登录失败')
@@ -217,8 +217,8 @@ export default function AuthModal({ onClose, onLogin }: AuthModalProps) {
         
         if (response.ok && data.status === 'success') {
           onLogin({
-            token: data.token,
-            user: data.user,
+            token: data.data.token,
+            user: data.data.user,
           })
         } else {
           throw new Error(data.message || '注册失败')
